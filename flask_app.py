@@ -3,13 +3,11 @@ from flask_cors import CORS
 import psycopg2
 import numpy as np
 from sklearn.linear_model import LinearRegression
-from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 from psycopg2 import errors
 import os
 import secrets
 
-# JWT imports
 from flask_jwt_extended import (
     JWTManager, create_access_token,
     jwt_required, get_jwt_identity
@@ -19,8 +17,6 @@ app = Flask(__name__)
 CORS(app)
 
 # --- JWT Config ---
-# Use a strong secret key (at least 32 characters)
-# In production, load this from environment variables
 app.config["JWT_SECRET_KEY"] = secrets.token_hex(32)
 jwt = JWTManager(app)
 
@@ -28,10 +24,8 @@ jwt = JWTManager(app)
 def get_db_connection():
     db_url = os.environ.get("DATABASE_URL")
     if db_url:
-        # Use Render’s hosted database
         return psycopg2.connect(db_url)
     else:
-        # Fallback for local development
         return psycopg2.connect(
             dbname="founding_mvp",
             user="postgres",
@@ -39,17 +33,20 @@ def get_db_connection():
             host="localhost",
             port="5432"
         )
+
 # ---------------- AUTH ROUTES ----------------
 @app.route('/register', methods=['POST'])
 def register():
     data = request.get_json()
+    email = data['email'].strip().lower()
     hashed_pw = generate_password_hash(data['password'])
+
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
         cursor.execute(
             "INSERT INTO users (name, email, password_hash, role) VALUES (%s, %s, %s, %s)",
-            (data['name'], data['email'], hashed_pw, data.get('role', 'user'))
+            (data['name'], email, hashed_pw, data.get('role', 'user'))
         )
         conn.commit()
         return jsonify({"message": "User registered successfully"}), 201
@@ -63,9 +60,12 @@ def register():
 @app.route('/login', methods=['POST'])
 def login():
     data = request.get_json()
+    email = data['email'].strip().lower()
+    password = data['password']
+
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, password_hash FROM users WHERE email=%s", (data['email'],))
+    cursor.execute("SELECT id, password_hash FROM users WHERE email=%s", (email,))
     user = cursor.fetchone()
     cursor.close()
     conn.close()
@@ -73,12 +73,16 @@ def login():
     if user is None or user[1] is None:
         return jsonify({"error": "User not found"}), 404
 
-    if check_password_hash(user[1], data['password']):
-        # ✅ identity must be string
+    if check_password_hash(user[1], password):
         token = create_access_token(identity=str(user[0]))
-        return jsonify({"message": "Login successful", "token": token}), 200
+        return jsonify({"token": token, "message": "Login successful"}), 200
     else:
         return jsonify({"error": "Invalid credentials"}), 401
+
+@app.route('/verify_token', methods=['GET'])
+@jwt_required()
+def verify_token_route():
+    return jsonify({"valid": True}), 200
 
 # ---------------- PROFILE ROUTES ----------------
 @app.route('/api/users/me', methods=['GET'])
@@ -127,11 +131,9 @@ def upload_file():
     if file.filename == '':
         return jsonify({"error": "No selected file"}), 400
 
-    # Save file locally (or to cloud storage)
     filepath = os.path.join("uploads", file.filename)
     file.save(filepath)
 
-    # Save metadata in DB (optional)
     user_id = get_jwt_identity()
     conn = get_db_connection()
     cur = conn.cursor()
@@ -143,7 +145,6 @@ def upload_file():
     conn.close()
 
     return jsonify({"message": "File uploaded successfully", "filename": file.filename}), 201
-
 
 # ---------------- CASHFLOW ROUTES ----------------
 @app.route('/get_entries', methods=['GET'])
@@ -175,16 +176,58 @@ def get_entries():
 def add_entry_detailed():
     user_id = get_jwt_identity()
     data = request.get_json()
+
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO entries (date, type, category, description, amount, user_id) VALUES (%s, %s, %s, %s, %s, %s)",
-        (data['date'], data['type'], data['category'], data['description'], data['amount'], user_id)
-    )
-    conn.commit()
-    cursor.close()
-    conn.close()
-    return jsonify({"message": "Detailed entry added successfully"}), 201
+
+    inserted = []
+
+    try:
+        if isinstance(data, list):
+            for entry in data:
+                cursor.execute(
+                    "INSERT INTO entries (date, type, category, description, amount, user_id) VALUES (%s, %s, %s, %s, %s, %s)",
+                    (entry['date'], entry['type'], entry['category'], entry['description'], entry['amount'], user_id)
+                )
+                inserted.append(entry)
+        else:
+            cursor.execute(
+                "INSERT INTO entries (date, type, category, description, amount, user_id) VALUES (%s, %s, %s, %s, %s, %s)",
+                (data['date'], data['type'], data['category'], data['description'], data['amount'], user_id)
+            )
+            inserted.append(data)
+
+        conn.commit()
+        return jsonify(inserted), 201
+
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/delete_entry', methods=['DELETE'])
+@jwt_required()
+def delete_entry():
+    user_id = get_jwt_identity()
+    data = request.get_json()
+    entry_id = data.get("id")
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("DELETE FROM entries WHERE id = %s AND user_id = %s", (entry_id, user_id))
+        conn.commit()
+        return jsonify({"message": "Entry deleted"}), 200
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
 
 @app.route('/forecast', methods=['GET'])
 @jwt_required()
@@ -203,7 +246,7 @@ def forecast():
     monthly_net = {}
     for date, type_, amount in rows:
         month = str(date)[:7]
-        monthly_net[month] = monthly_net.get(month, 0) + (amount if type_ == "income" else -amount)
+        monthly_net[month] = monthly_net.get(month, 0) + (amount if type_.lower() == "income" else -amount)
 
     months = sorted(monthly_net.keys())
     X = np.arange(len(months)).reshape(-1, 1)
@@ -226,8 +269,8 @@ def get_alerts():
     entries = cur.fetchall()
     conn.close()
 
-    income = sum(float(e[1]) for e in entries if e[0] == 'income')
-    expenses = sum(float(e[1]) for e in entries if e[0] == 'expense')
+    income = sum(float(e[1]) for e in entries if e[0].lower() == 'income')
+    expenses = sum(float(e[1]) for e in entries if e[0].lower() == 'expense')
     net_cashflow = income - expenses
 
     alerts = []
@@ -236,7 +279,6 @@ def get_alerts():
     if expenses > income:
         alerts.append("⚠ Expenses exceed income")
 
-    # Add positive signals if no warnings
     if not alerts:
         if net_cashflow >= 5000:
             alerts.append("✅ Strong financial health")
@@ -247,11 +289,6 @@ def get_alerts():
 
     return jsonify(alerts)
 
-
 # ---------------- MAIN ----------------
 if __name__ == "__main__":
     app.run(debug=True)
-
-    print(app.url_map)
-
-print("DATABASE_URL:", os.environ.get("DATABASE_URL"))
