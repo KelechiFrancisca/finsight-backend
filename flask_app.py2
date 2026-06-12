@@ -1,0 +1,74 @@
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import jwt, datetime
+
+app = Flask(__name__)
+CORS(app)
+app.config['SECRET_KEY'] = 'your_secret_key'
+
+# Fake in-memory database for MVP
+transactions = []
+
+# --- Authentication ---
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.json
+    # For MVP, accept any email/password
+    token = jwt.encode(
+        {"email": data.get("email"), "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=1)},
+        app.config['SECRET_KEY'],
+        algorithm="HS256"
+    )
+    return jsonify({"token": token})
+
+@app.route('/verify_token', methods=['POST'])
+def verify_token():
+    token = request.headers.get('Authorization', '').replace('Bearer ', '')
+    try:
+        decoded = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+        return jsonify({"valid": True, "user": decoded})
+    except jwt.ExpiredSignatureError:
+        return jsonify({"valid": False, "message": "Token expired"}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({"valid": False, "message": "Invalid token"}), 401
+
+# --- Cashflow Routes ---
+@app.route('/get_entries', methods=['GET'])
+def get_entries():
+    return jsonify(transactions)
+
+@app.route('/add', methods=['POST'])
+def add_entry():
+    data = request.json
+    if isinstance(data, list):
+        transactions.extend(data)
+    else:
+        transactions.append(data)
+    return jsonify(transactions)
+
+@app.route('/delete_entry', methods=['DELETE'])
+def delete_entry():
+    data = request.json
+    id_to_delete = data.get("id")
+    global transactions
+    transactions = [t for t in transactions if t.get("id") != id_to_delete]
+    return jsonify({"message": "Deleted"})
+
+# --- Forecast & Alerts ---
+@app.route('/forecast', methods=['GET'])
+def forecast():
+    # Simple MVP forecast: net profit + 10%
+    total_income = sum(t['amount'] for t in transactions if t['type'] == "Income")
+    total_expense = sum(t['amount'] for t in transactions if t['type'] == "Expense")
+    net = total_income - total_expense
+    return jsonify({"current_net": net, "forecast_next": net * 1.1})
+
+@app.route('/alerts', methods=['GET'])
+def alerts():
+    total_expense = sum(t['amount'] for t in transactions if t['type'] == "Expense")
+    if total_expense > 4000:
+        return jsonify(["High expenses detected!"])
+    return jsonify([])
+
+if __name__ == '__main__':
+    app.run(debug=True)
