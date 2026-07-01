@@ -3,6 +3,28 @@ from datetime import date
 from models import Entry, Alert
 from auth_utils import verify_token_and_get_user
 from app import app, db
+from dotenv import load_dotenv
+import os
+
+load_dotenv()  # loads variables from .env
+
+account_sid = os.getenv("TWILIO_ACCOUNT_SID")
+auth_token = os.getenv("TWILIO_AUTH_TOKEN")
+twilio_phone = os.getenv("TWILIO_PHONE")
+admin_phone = os.getenv("ADMIN_PHONE")
+
+from twilio.rest import Client
+
+client = Client(account_sid, auth_token)
+
+message = client.messages.create(
+    body="🚨 Financial Tracker Alert: Test WhatsApp notification!",
+    from_=f"whatsapp:{twilio_phone}",
+    to=f"whatsapp:{admin_phone}"
+)
+
+print(message.sid)
+
 
 @app.route("/api/alerts", methods=["GET"])
 def alerts():
