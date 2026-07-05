@@ -205,24 +205,41 @@ def update_profile():
     conn = None
     cursor = None
 
-        try:
+    try:
         conn = get_db_connection()
         cursor = conn.cursor()
 
         cursor.execute(
-            "UPDATE users SET name=%s, email=%s, role=%s WHERE id=%s",
-            (data["name"], data["email"], data["role"], user_id)
+            """
+            UPDATE users
+            SET name=%s, email=%s, role=%s
+            WHERE id=%s
+            """,
+            (
+                data["name"],
+                data["email"],
+                data["role"],
+                user_id,
+            ),
         )
 
         conn.commit()
-
-        return jsonify({"message": "Profile updated"})
+        return jsonify({"message": "Profile updated"}), 200
 
     except errors.UniqueViolation:
         if conn:
             conn.rollback()
 
         return jsonify({"error": "Email already exists"}), 400
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+
+        import traceback
+        traceback.print_exc()
+
+        return jsonify({"error": str(e)}), 500
 
     finally:
         if cursor:
@@ -255,12 +272,10 @@ def upload_file():
         "INSERT INTO uploads (user_id, filename, filepath) VALUES (%s, %s, %s)",
         (user_id, file.filename, filepath),
     )
-    conn.commit()
-    if cur:
-        cur.close()
+   conn.commit()
 
-    if conn:
-        conn.close()
+   cur.close()
+   conn.close()
 
     return jsonify({"message": "File uploaded successfully", "filename": file.filename}), 201
 
