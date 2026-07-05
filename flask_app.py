@@ -86,19 +86,32 @@ def register():
     hashed_pw = generate_password_hash(data['password'])
     conn = get_db_connection()
     cursor = conn.cursor()
-    try:
-        cursor.execute(
-            "INSERT INTO users (name, email, password_hash, role) VALUES (%s, %s, %s, %s)",
-            (data['name'], data['email'], hashed_pw, data.get('role', 'user'))
-        )
-        conn.commit()
-        return jsonify({"message": "User registered successfully"}), 201
-    except errors.UniqueViolation:
+   try:
+    cursor.execute(
+        "INSERT INTO users (name, email, password_hash, role) VALUES (%s, %s, %s, %s)",
+        (data['name'], data['email'], hashed_pw, data.get('role', 'user'))
+    )
+    conn.commit()
+    return jsonify({"message": "User registered successfully"}), 201
+
+except errors.UniqueViolation:
+    conn.rollback()
+    return jsonify({"error": "Email already exists"}), 400
+
+except Exception as e:
+    import traceback
+    traceback.print_exc()
+
+    if conn:
         conn.rollback()
-        return jsonify({"error": "Email already exists"}), 400
-    finally:
-        cursor.close()
-        conn.close()
+
+    return jsonify({
+        "error": str(e)
+    }), 500
+
+finally:
+    cursor.close()
+    conn.close()
 
 @app.route('/login', methods=['POST'])
 def login():
