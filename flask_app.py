@@ -74,7 +74,6 @@ def get_db_connection():
 @app.route('/register', methods=['POST'])
 def register():
     data = request.get_json()
-    print("Register request:", data)
 
     if not data:
         return jsonify({"error": "Request body must be JSON"}), 400
@@ -89,7 +88,7 @@ def register():
     conn = None
     cursor = None
 
-       try:
+    try:
         conn = get_db_connection()
         cursor = conn.cursor()
 
@@ -102,23 +101,18 @@ def register():
                 data["name"],
                 data["email"],
                 hashed_pw,
-                data.get("role", "user")
-            )
+                data.get("role", "user"),
+            ),
         )
 
         conn.commit()
 
-        return jsonify({
-            "message": "User registered successfully"
-        }), 201
+        return jsonify({"message": "User registered successfully"}), 201
 
     except errors.UniqueViolation:
         if conn:
             conn.rollback()
-
-        return jsonify({
-            "error": "Email already exists"
-        }), 400
+        return jsonify({"error": "Email already exists"}), 400
 
     except Exception as e:
         import traceback
@@ -127,9 +121,7 @@ def register():
         if conn:
             conn.rollback()
 
-        return jsonify({
-            "error": str(e)
-        }), 500
+        return jsonify({"error": str(e)}), 500
 
     finally:
         if cursor:
