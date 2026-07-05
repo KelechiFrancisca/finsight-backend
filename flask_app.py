@@ -89,7 +89,7 @@ def register():
     conn = None
     cursor = None
 
-    try:
+       try:
         conn = get_db_connection()
         cursor = conn.cursor()
 
