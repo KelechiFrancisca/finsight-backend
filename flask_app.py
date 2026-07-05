@@ -27,10 +27,6 @@ def home():
         "message": "NEW VERSION DEPLOYED",
         "version": "July-06-2026"
     }), 200
-    return jsonify({
-        "message": "NEW VERSION DEPLOYED",
-        "version": "July-06-2026"
-    })
 
 
 @app.route("/health", methods=["GET"])
@@ -77,65 +73,119 @@ def get_db_connection():
 @app.route('/register', methods=['POST'])
 def register():
     data = request.get_json()
+
     if not data:
         return jsonify({"error": "Request body must be JSON"}), 400
+
     required = ["name", "email", "password"]
     for field in required:
         if field not in data:
             return jsonify({"error": f"{field} is required"}), 400
-    hashed_pw = generate_password_hash(data['password'])
-    conn = get_db_connection()
-    cursor = conn.cursor()
-   try:
-    cursor.execute(
-        "INSERT INTO users (name, email, password_hash, role) VALUES (%s, %s, %s, %s)",
-        (data['name'], data['email'], hashed_pw, data.get('role', 'user'))
-    )
-    conn.commit()
-    return jsonify({"message": "User registered successfully"}), 201
 
-except errors.UniqueViolation:
-    conn.rollback()
-    return jsonify({"error": "Email already exists"}), 400
+    hashed_pw = generate_password_hash(data["password"])
 
-except Exception as e:
-    import traceback
-    traceback.print_exc()
+    conn = None
+    cursor = None
 
-    if conn:
-        conn.rollback()
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
 
-    return jsonify({
-        "error": str(e)
-    }), 500
+        cursor.execute(
+            """
+            INSERT INTO users (name, email, password_hash, role)
+            VALUES (%s, %s, %s, %s)
+            """,
+            (
+                data["name"],
+                data["email"],
+                hashed_pw,
+                data.get("role", "user")
+            )
+        )
 
-finally:
-    cursor.close()
-    conn.close()
+        conn.commit()
+
+        return jsonify({
+            "message": "User registered successfully"
+        }), 201
+
+    except errors.UniqueViolation:
+        if conn:
+            conn.rollback()
+
+        return jsonify({
+            "error": "Email already exists"
+        }), 400
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+
+        if conn:
+            conn.rollback()
+
+        return jsonify({
+            "error": str(e)
+        }), 500
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
 
 @app.route('/login', methods=['POST'])
 def login():
     data = request.get_json()
+
     if not data:
         return jsonify({"error": "Request body must be JSON"}), 400
+
     if "email" not in data or "password" not in data:
         return jsonify({"error": "Email and password are required"}), 400
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, password_hash FROM users WHERE email=%s", (data['email'],))
-    user = cursor.fetchone()
-    cursor.close()
-    conn.close()
 
-    if user is None or user[1] is None:
-        return jsonify({"error": "User not found"}), 404
+    conn = None
+    cursor = None
 
-    if check_password_hash(user[1], data['password']):
-        # ✅ identity must be string
-        token = create_access_token(identity=str(user[0]))
-        return jsonify({"message": "Login successful", "token": token}), 200
-    else:
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "SELECT id, password_hash FROM users WHERE email=%s",
+            (data["email"],)
+        )
+
+        user = cursor.fetchone()
+
+        if user is None or user[1] is None:
+            return jsonify({"error": "User not found"}), 404
+
+        if check_password_hash(user[1], data["password"]):
+            token = create_access_token(identity=str(user[0]))
+            return jsonify({
+                "message": "Login successful",
+                "token": token
+            }), 200
+
         return jsonify({"error": "Invalid credentials"}), 401
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+
+        return jsonify({
+            "error": str(e)
+        }), 500
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
 
 # ---------------- PROFILE ROUTES ----------------
 @app.route('/api/users/me', methods=['GET'])
