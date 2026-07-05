@@ -209,25 +209,35 @@ def get_profile():
 def update_profile():
     user_id = get_jwt_identity()
     data = request.get_json()
-    conn = get_db_connection()
-    cursor = conn.cursor()
+
+    conn = None
+    cursor = None
+
     try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
         cursor.execute(
             "UPDATE users SET name=%s, email=%s, role=%s WHERE id=%s",
-            (data['name'], data['email'], data['role'], user_id)
+            (data["name"], data["email"], data["role"], user_id)
         )
-        conn.commit()
-        return jsonify({"message": "Profile updated"})
-  except errors.UniqueViolation:
-    if conn:
-        conn.rollback()
-    return jsonify({"error": "Email already exists"}), 400
 
-finally:
-    if cursor:
-        cursor.close()
-    if conn:
-        conn.close()
+        conn.commit()
+
+        return jsonify({"message": "Profile updated"})
+
+    except errors.UniqueViolation:
+        if conn:
+            conn.rollback()
+
+        return jsonify({"error": "Email already exists"}), 400
+
+    finally:
+        if cursor:
+            cursor.close()
+
+        if conn:
+            conn.close()
 
 # ---------------- UPLOAD FILE ----------------
 @app.route('/upload', methods=['POST'])
