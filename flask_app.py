@@ -17,6 +17,7 @@ from flask_jwt_extended import (
 )
 
 app = Flask(__name__)
+app.config["PROPAGATE_EXCEPTIONS"] = True
 CORS(app)
 
 # ---------------- HOME ----------------
@@ -73,6 +74,7 @@ def get_db_connection():
 @app.route('/register', methods=['POST'])
 def register():
     data = request.get_json()
+    print("Register request:", data)
 
     if not data:
         return jsonify({"error": "Request body must be JSON"}), 400
@@ -216,11 +218,15 @@ def update_profile():
         )
         conn.commit()
         return jsonify({"message": "Profile updated"})
-    except errors.UniqueViolation:
+  except errors.UniqueViolation:
+    if conn:
         conn.rollback()
-        return jsonify({"error": "Email already exists"}), 400
-    finally:
+    return jsonify({"error": "Email already exists"}), 400
+
+finally:
+    if cursor:
         cursor.close()
+    if conn:
         conn.close()
 
 # ---------------- UPLOAD FILE ----------------
@@ -248,7 +254,9 @@ def upload_file():
         (user_id, file.filename, filepath),
     )
     conn.commit()
+if cur:
     cur.close()
+if conn:
     conn.close()
 
     return jsonify({"message": "File uploaded successfully", "filename": file.filename}), 201
