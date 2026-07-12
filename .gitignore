@@ -1,11 +1,78 @@
-# Ignore database files
-*.db
+<<<<<<< HEAD
+# Environment variables
+.env
+.env.local
+.env.*.local
 
-# Ignore uploads folder
-/uploads/
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+PIPFILE.lock
 
-# Ignore instance folder
-/instance/
+# Virtual Environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
 
-# Ignore VSCode settings
+# IDE
 .vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Uploads
+uploads/
+*.csv
+
+# Node (Frontend)
+node_modules/
+npm-debug.log
+yarn-error.log
+.next/
+out/
+
+# Logs
+*.log
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Jupyter Notebooks (keep in repo but ignore outputs)
+.ipynb_checkpoints/
+
+# ML Models
+*.pkl
+*.pickle
+*.joblib
+=======
+.env 
+.env 
+.env 
+.env 
+>>>>>>> c609d03 (Add .env to .gitignore)
