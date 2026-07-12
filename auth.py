@@ -9,7 +9,8 @@ auth_bp = Blueprint("auth", __name__, url_prefix="/api")
 @auth_bp.route("/register", methods=["POST"])
 def register():
     data = request.json
-    name = data.get("name")
+    # Capture username from frontend/curl and ensure fallback
+    username = data.get("username") or data.get("name") or "default_user"
     email = data.get("email")
     password = data.get("password")
 
@@ -20,7 +21,8 @@ def register():
         return jsonify({"error": "Email already registered"}), 400
 
     hashed_pw = generate_password_hash(password)
-    new_user = User(name=name, email=email, password_hash=hashed_pw)
+    # ✅ Populate both name and username safely
+    new_user = User(name=username, username=username, email=email, password_hash=hashed_pw)
     db.session.add(new_user)
     db.session.commit()
 
@@ -76,7 +78,7 @@ def get_profile():
         user = User.query.get(decoded["user_id"])
         if not user:
             return jsonify({"error": "User not found"}), 404
-        return jsonify({"name": user.name, "email": user.email, "role": "owner"})
+        return jsonify({"name": user.name, "username": user.username, "email": user.email, "role": "owner"})
     except Exception:
         return jsonify({"error": "Invalid token"}), 401
 
@@ -95,6 +97,7 @@ def update_profile():
 
         data = request.json
         user.name = data.get("name", user.name)
+        user.username = data.get("username", user.username)
         user.email = data.get("email", user.email)
         db.session.commit()
         return jsonify({"message": "Profile updated successfully"})
