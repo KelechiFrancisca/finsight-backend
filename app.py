@@ -16,12 +16,18 @@ from models import User, Entry, Forecast, Alert, Upload, Settings
 from auth_utils import verify_token_and_get_user
 
 app = Flask(__name__)
-CORS(app)
+
+# ✅ Expanded CORS config for React frontend (local + cloud)
+CORS(app, supports_credentials=True, origins=[
+    "http://localhost:3000",
+    "https://finsight-frontend-rhov.onrender.com"
+])
 
 # ✅ Database config (Postgres only)
-app.config["SQLALCHEMY_DATABASE_URI"] = "postgresql://postgres:Francisca2026!@localhost:5432/founding_mvp"
+app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-app.config["SECRET_KEY"] = "your_secret_key_here"
+# ✅ Use a stronger secret key (32+ chars)
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "replace_with_long_random_secret_key")
 
 # ✅ Initialize DB + Migrations
 db.init_app(app)
@@ -30,6 +36,7 @@ migrate.init_app(app, db)
 # Register blueprints
 app.register_blueprint(entries_bp, url_prefix="/api")
 app.register_blueprint(auth_bp, url_prefix="/api")
+
 
 # ✅ Currency symbols (global + African majors)
 CURRENCY_SYMBOLS = {
@@ -131,6 +138,18 @@ def upload():
         filepath = os.path.join(UPLOAD_FOLDER, filename)
         df.to_csv(filepath, index=False)
 
+        # ✅ Insert each CSV row into entries table
+        for _, row in df.iterrows():
+            new_entry = Entry(
+                user_id=user_id,
+                date=row["Date"],
+                type=row["Type"],
+                category=row["Category"],
+                description=row["Description"],
+                amount=row["Amount"]
+            )
+            db.session.add(new_entry)
+
         new_upload = Upload(user_id=user_id, filename=filename)
         db.session.add(new_upload)
         db.session.commit()
@@ -139,6 +158,7 @@ def upload():
 
         return jsonify(new_upload.to_dict())
 
+    # ✅ GET branch (list uploads)
     uploads = Upload.query.filter_by(user_id=user_id).all()
     return jsonify([u.to_dict() for u in uploads])
 
@@ -236,7 +256,9 @@ def forecast():
     if not user_id:
         return jsonify({"error": "Invalid token"}), 401
 
+    # 👇 This must be indented 4 spaces, not 8
     entries = Entry.query.filter_by(user_id=user_id).all()
+
     total_income = sum(e.amount for e in entries if e.type.lower() == "income")
     total_expense = sum(e.amount for e in entries if e.type.lower() == "expense")
     current_net = total_income - total_expense
@@ -248,7 +270,7 @@ def forecast():
 
     generate_alerts_for_user(user_id)
 
-        # ✅ Get user settings for currency
+    # ✅ Get user settings for currency
     settings = Settings.query.filter_by(user_id=user_id).first()
     currency = settings.currency if settings else "USD"
     symbol = CURRENCY_SYMBOLS.get(currency, "")
@@ -259,11 +281,14 @@ def forecast():
         "current_net": new_forecast.current_net,
         "forecast_next": new_forecast.forecast_next,
         "created_at": new_forecast.created_at.isoformat() if new_forecast.created_at else None,
-        # ✅ Formatted values
         "formatted_current_net": f"{symbol}{new_forecast.current_net:,.2f}",
         "formatted_forecast_next": f"{symbol}{new_forecast.forecast_next:,.2f}",
-        "currency": currency
+        "currency": currency,
+        # 👇 Optional: include totals for clarity
+        "total_income": total_income,
+        "total_expense": total_expense
     })
+
 
 
 # -------------------------
@@ -278,13 +303,34 @@ def alerts():
 
     alerts_list = generate_alerts_for_user(user_id)
 
+    # ✅ Totals calculation
+    entries = Entry.query.filter_by(user_id=user_id).all()
+    total_income = sum(e.amount for e in entries if e.type.lower() == "income")
+    total_expense = sum(e.amount for e in entries if e.type.lower() == "expense")
+    current_net = total_income - total_expense
+
+    # ✅ Currency lookup
+    settings = Settings.query.filter_by(user_id=user_id).first()
+    currency = settings.currency if settings else "USD"
+    symbol = CURRENCY_SYMBOLS.get(currency, "")
+
     return jsonify({
         "counts": {
             "high": sum(1 for a in alerts_list if a.level == "high"),
             "medium": sum(1 for a in alerts_list if a.level == "medium"),
             "info": sum(1 for a in alerts_list if a.level == "info")
         },
-        "alerts": [a.to_dict() for a in alerts_list]
+        "alerts": [a.to_dict() for a in alerts_list],
+        "totals": {
+            "total_income": total_income,
+            "total_expense": total_expense,
+            "current_net": current_net,
+            # 👇 Formatted values
+            "formatted_total_income": f"{symbol}{total_income:,.2f}",
+            "formatted_total_expense": f"{symbol}{total_expense:,.2f}",
+            "formatted_current_net": f"{symbol}{current_net:,.2f}",
+            "currency": currency
+        }
     })
 
 
@@ -342,6 +388,7 @@ def acknowledge_alert(alert_id):
     return jsonify({"message": "Alert acknowledged", "alert": alert.to_dict()})
 
 
+
 # -------------------------
 # Scheduler: Daily Alerts Refresh
 # -------------------------
@@ -356,6 +403,30 @@ def generate_daily_alerts():
 scheduler = BackgroundScheduler()
 scheduler.add_job(func=generate_daily_alerts, trigger="cron", hour=0, minute=0)
 scheduler.start()
+
+@app.route("/")
+def home():
+    return """
+    <html>
+        <head>
+            <title>Finsight AI</title>
+            <style>
+                body { font-family: Arial, sans-serif; text-align: center; margin-top: 100px; background-color: #f9f9f9; }
+                h1 { color: #2c3e50; }
+                p { color: #34495e; font-size: 18px; }
+                a { color: #2980b9; text-decoration: none; }
+                a:hover { text-decoration: underline; }
+            </style>
+        </head>
+        <body>
+            <h1>Welcome to Finsight AI</h1>
+            <p>Your financial insights, alerts, and forecasts — all in one place.</p>
+            <p><a href="/health">Check System Health</a></p>
+            <p><a href="/register">Register a New User</a></p>
+            <p><a href="/login">Login</a></p>
+        </body>
+    </html>
+    """
 
 
 # -------------------------
