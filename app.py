@@ -45,6 +45,11 @@ CURRENCY_SYMBOLS = {
     "XOF": "CFA", "XAF": "CFA"
 }
 
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok", "message": "Backend is healthy"}), 200
+
+
 # -------------------------
 # Centralized Alert Helper
 # -------------------------
