@@ -76,3 +76,6 @@ out/
 .env 
 .env 
 >>>>>>> c609d03 (Add .env to .gitignore)
+finsight-backend.git/ 
+__pycache__/ 
+clean-backend/ 

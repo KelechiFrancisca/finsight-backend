@@ -103,3 +103,51 @@ def update_profile():
         return jsonify({"message": "Profile updated successfully"})
     except Exception:
         return jsonify({"error": "Invalid token"}), 401
+
+# ✅ ADDED: Forgot Password - generates reset link
+@auth_bp.route("/forgot-password", methods=["POST"])
+def forgot_password():
+    data = request.json
+    email = data.get("email", "").strip().lower()
+
+    user = User.query.filter_by(email=email).first()
+    # Always return success to avoid email enumeration
+    if not user:
+        return jsonify({"message": "If email exists, reset link sent"}), 200
+
+    reset_token = jwt.encode(
+        {"user_id": user.id, "exp": datetime.datetime.utcnow() + datetime.timedelta(minutes=30)},
+        current_app.config["SECRET_KEY"],
+        algorithm="HS256"
+    )
+
+    # TODO: Send email here when you have SMTP configured
+    # For now, print to Render logs so you can test
+    frontend_url = "https://finsight-frontend-rhov.onrender.com"
+    reset_link = f"{frontend_url}/reset-password/{reset_token}"
+    print(f"RESET LINK for {email}: {reset_link}")
+
+    return jsonify({"message": "If email exists, reset link sent", "reset_link": reset_link}), 200
+
+# ✅ ADDED: Reset Password - validates token and updates password
+@auth_bp.route("/reset-password/<token>", methods=["POST"])
+def reset_password(token):
+    data = request.json
+    new_password = data.get("password")
+
+    if not new_password or len(new_password) < 8:
+        return jsonify({"error": "Password must be at least 8 characters"}), 400
+
+    try:
+        decoded = jwt.decode(token, current_app.config["SECRET_KEY"], algorithms=["HS256"])
+        user = User.query.get(decoded["user_id"])
+        if not user:
+            return jsonify({"error": "Invalid token"}), 400
+
+        user.password_hash = generate_password_hash(new_password)
+        db.session.commit()
+        return jsonify({"message": "Password reset successful"}), 200
+    except jwt.ExpiredSignatureError:
+        return jsonify({"error": "Reset link expired"}), 400
+    except jwt.InvalidTokenError:
+        return jsonify({"error": "Invalid reset link"}), 400
