@@ -75,15 +75,20 @@ class Forecast(db.Model):
         }
 
 
+
 class Alert(db.Model):
     __tablename__ = "alerts"
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
-    level = db.Column(db.String(50))   # high, medium, info
+    level = db.Column(db.String(50))
     message = db.Column(db.String(255))
-    type = db.Column(db.String(50))    # expense, revenue, churn, etc.
+    type = db.Column(db.String(50))
     created_at = db.Column(db.DateTime, default=db.func.now())
+
+    # Needed for your alerts.py - THIS WAS MISSING
+    why = db.Column(db.Text, nullable=True)
+    actions = db.Column(db.JSON, nullable=True)
 
     # Workflow fields
     resolved = db.Column(db.Boolean, default=False)
@@ -94,9 +99,9 @@ class Alert(db.Model):
     resolved_at = db.Column(db.DateTime, nullable=True)
     acknowledged_at = db.Column(db.DateTime, nullable=True)
 
-    # ✅ Notification fields
+    # Notification fields
     notified_at = db.Column(db.DateTime, nullable=True)
-    notification_type = db.Column(db.String(20), nullable=True)  # SMS, Email, Push
+    notification_type = db.Column(db.String(20), nullable=True)
 
     user = db.relationship("User", backref=db.backref("alerts", lazy=True))
 
@@ -107,6 +112,8 @@ class Alert(db.Model):
             "level": self.level,
             "message": self.message,
             "type": self.type,
+            "why": self.why,
+            "actions": self.actions or [],
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "resolved": self.resolved,
             "acknowledged": self.acknowledged,
@@ -137,21 +144,48 @@ class Upload(db.Model):
         }
 
 
-# ✅ New Settings model
+# ✅ Settings model - upgraded
 class Settings(db.Model):
     __tablename__ = "settings"
-
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     business_name = db.Column(db.String(255), nullable=True)
-    currency = db.Column(db.String(50), nullable=True)
-
+    currency = db.Column(db.String(50), nullable=True, default="NGN")
     user = db.relationship("User", backref=db.backref("settings", lazy=True))
-
     def to_dict(self):
         return {
             "id": self.id,
             "user_id": self.user_id,
             "business_name": self.business_name,
-            "currency": self.currency,
+            "currency": self.currency or "NGN",
+        }
+
+# ✅ NEW: Category for ALL users (not admin only)
+class Category(db.Model):
+    __tablename__ = "categories"
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    type = db.Column(db.String(20), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    user = db.relationship("User", backref=db.backref("categories", lazy=True))
+    def to_dict(self):
+        return {"id": self.id, "user_id": self.user_id, "name": self.name, "type": self.type}
+
+class Task(db.Model):
+    __tablename__ = "tasks"
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    alert_id = db.Column(db.Integer, nullable=True)
+    title = db.Column(db.String(255), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    status = db.Column(db.String(50), default="pending")
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    user = db.relationship("User", backref=db.backref("tasks", lazy=True))
+    def to_dict(self):
+        return {
+            "id": self.id, "user_id": self.user_id, "alert_id": self.alert_id,
+            "title": self.title, "description": self.description,
+            "status": self.status,
+            "created_at": self.created_at.isoformat() if self.created_at else None
         }
