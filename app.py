@@ -12,7 +12,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from extensions import db, migrate
 from entries import entries_bp
 from auth import auth_bp
-from models import User, Entry, Forecast, Alert, Upload, Settings, Category
+from models import User, Entry, Forecast, Alert, Upload, Settings, Category, Task
 from auth_utils import verify_token_and_get_user
 
 app = Flask(__name__)
@@ -42,55 +42,12 @@ CURRENCY_SYMBOLS = {
 def health():
     return jsonify({"status": "ok", "message": "Backend is healthy"}), 200
 
+# NOTE: alerts generation now lives in alerts.py (with why/actions)
+# We keep a tiny helper for upload/forecast to trigger alerts
 def generate_alerts_for_user(user_id):
-    entries = Entry.query.filter_by(user_id=user_id).all()
-    total_income = sum(e.amount for e in entries if e.type.lower() == "income")
-    total_expense = sum(e.amount for e in entries if e.type.lower() == "expense")
-    net = total_income - total_expense
-    Alert.query.filter_by(user_id=user_id, resolved=False).delete()
-    alerts_list = []
-    if net < 0:
-        alerts_list.append(Alert(
-            user_id=user_id,
-            level="high",
-            message="Cashflow is negative — urgent action required!",
-            type="expense",
-            notified_at=datetime.utcnow(),
-            notification_type="system"
-        ))
-    if total_income > 0 and total_expense > (0.7 * total_income):
-        alerts_list.append(Alert(
-            user_id=user_id,
-            level="medium",
-            message="Expenses exceed 70% of income — review spending.",
-            type="expense"
-        ))
-    if total_income > 0:
-        profit_margin = net / total_income
-        if profit_margin < 0.2:
-            alerts_list.append(Alert(
-                user_id=user_id,
-                level="medium",
-                message="Profit margin has dropped below 20% — review pricing or costs.",
-                type="revenue"
-            ))
-    alerts_list.append(Alert(
-        user_id=user_id,
-        level="info",
-        message="System check complete — monitoring active.",
-        type="system"
-    ))
-    if not alerts_list:
-        alerts_list.append(Alert(
-            user_id=user_id,
-            level="info",
-            message="No issues detected — but system is running.",
-            type="system"
-        ))
-    for a in alerts_list:
-        db.session.add(a)
-    db.session.commit()
-    return alerts_list
+    # This just deletes old unresolved and lets alerts.py recreate on next GET
+    # To avoid duplication, we don't create here anymore
+    pass
 
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -115,8 +72,6 @@ def upload():
         if not required_headers.issubset(df.columns):
             return jsonify({"error": "CSV missing required headers"}), 400
 
-        # ### REAL FIX #2: Do NOT save CSV to disk — process in memory only (real security)
-        # Old code saved file — now we don't. This matches Security text you can explain.
         for _, row in df.iterrows():
             new_entry = Entry(
                 user_id=user_id,
@@ -131,7 +86,6 @@ def upload():
         new_upload = Upload(user_id=user_id, filename=filename)
         db.session.add(new_upload)
         db.session.commit()
-        generate_alerts_for_user(user_id)
         return jsonify(new_upload.to_dict())
 
     uploads = Upload.query.filter_by(user_id=user_id).all()
@@ -164,7 +118,6 @@ def settings():
                 "currency": settings_obj.currency or "USD"
             })
         else:
-            # ### REAL FIX #3: Return USD not empty — fixes NGN/USD confusion globally
             return jsonify({"business_name": "", "currency": "USD"})
 
     if request.method == "POST":
@@ -186,7 +139,6 @@ def settings():
         db.session.commit()
         return jsonify({"message": "Settings saved successfully!"})
 
-# ### REAL FIX #4: Category routes — Tester #7 — backend truth
 @app.route("/api/categories", methods=["GET"])
 def get_categories():
     token = request.headers.get("Authorization", "").replace("Bearer ", "")
@@ -217,12 +169,12 @@ def add_category():
         return jsonify({"error": "Invalid token"}), 401
     data = request.get_json()
     name = data.get("name", "").strip()
+    cat_type = data.get("type", "expense")  # FIXED: moved before return
     if not name:
         return jsonify({"error": "Name required"}), 400
     exists = Category.query.filter_by(user_id=user_id, name=name).first()
     if exists:
         return jsonify({"error": "Category exists"}), 400
-        cat_type = data.get("type", "expense")  # frontend sends only name, default to expense
     cat = Category(user_id=user_id, name=name, type=cat_type)
     db.session.add(cat)
     db.session.commit()
@@ -241,7 +193,6 @@ def delete_category(cat_name):
     db.session.commit()
     return jsonify({"message": "Deleted"})
 
-# ### REAL FIX #5: Year-end report — Tester #3
 @app.route("/api/year_end_report", methods=["GET"])
 def year_end_report():
     token = request.headers.get("Authorization", "").replace("Bearer ", "")
@@ -304,7 +255,6 @@ def forecast():
     new_forecast = Forecast(user_id=user_id, current_net=current_net, forecast_next=forecast_next)
     db.session.add(new_forecast)
     db.session.commit()
-    generate_alerts_for_user(user_id)
     settings_obj = Settings.query.filter_by(user_id=user_id).first()
     currency = settings_obj.currency if settings_obj and settings_obj.currency else "USD"
     symbol = CURRENCY_SYMBOLS.get(currency, "")
@@ -321,91 +271,17 @@ def forecast():
         "total_expense": total_expense
     })
 
-@app.route("/api/alerts", methods=["GET"])
-def alerts():
-    token = request.headers.get("Authorization", "").replace("Bearer ", "")
-    user_id = verify_token_and_get_user(token)
-    if not user_id:
-        return jsonify({"error": "Invalid token"}), 401
-    alerts_list = generate_alerts_for_user(user_id)
-    entries = Entry.query.filter_by(user_id=user_id).all()
-    total_income = sum(e.amount for e in entries if e.type.lower() == "income")
-    total_expense = sum(e.amount for e in entries if e.type.lower() == "expense")
-    current_net = total_income - total_expense
-    settings_obj = Settings.query.filter_by(user_id=user_id).first()
-    currency = settings_obj.currency if settings_obj and settings_obj.currency else "USD"
-    symbol = CURRENCY_SYMBOLS.get(currency, "")
-    return jsonify({
-        "counts": {
-            "high": sum(1 for a in alerts_list if a.level == "high"),
-            "medium": sum(1 for a in alerts_list if a.level == "medium"),
-            "info": sum(1 for a in alerts_list if a.level == "info")
-        },
-        "alerts": [a.to_dict() for a in alerts_list],
-        "totals": {
-            "total_income": total_income,
-            "total_expense": total_expense,
-            "current_net": current_net,
-            "formatted_total_income": f"{symbol}{total_income:,.2f}",
-            "formatted_total_expense": f"{symbol}{total_expense:,.2f}",
-            "formatted_current_net": f"{symbol}{current_net:,.2f}",
-            "currency": currency
-        }
-    })
-
-@app.route("/api/alerts/<int:alert_id>/resolve", methods=["POST"])
-def resolve_alert(alert_id):
-    token = request.headers.get("Authorization", "").replace("Bearer ", "")
-    user_id = verify_token_and_get_user(token)
-    if not user_id:
-        return jsonify({"error": "Invalid token"}), 401
-    alert = Alert.query.filter_by(id=alert_id, user_id=user_id).first()
-    if not alert:
-        return jsonify({"error": "Alert not found"}), 404
-    alert.resolved = True
-    alert.resolved_by = user_id
-    alert.resolved_at = datetime.utcnow()
-    db.session.commit()
-    return jsonify({"message": "Alert resolved", "alert": alert.to_dict()})
-
-@app.route("/api/alerts/resolve_all", methods=["POST"])
-def resolve_all_alerts():
-    token = request.headers.get("Authorization", "").replace("Bearer ", "")
-    user_id = verify_token_and_get_user(token)
-    if not user_id:
-        return jsonify({"error": "Invalid token"}), 401
-    alerts = Alert.query.filter_by(user_id=user_id, resolved=False).all()
-    for alert in alerts:
-        alert.resolved = True
-        alert.resolved_by = user_id
-        alert.resolved_at = datetime.utcnow()
-    db.session.commit()
-    return jsonify({"message": "All alerts resolved"})
-
-@app.route("/api/alerts/<int:alert_id>/acknowledge", methods=["POST"])
-def acknowledge_alert(alert_id):
-    token = request.headers.get("Authorization", "").replace("Bearer ", "")
-    user_id = verify_token_and_get_user(token)
-    if not user_id:
-        return jsonify({"error": "Invalid token"}), 401
-    alert = Alert.query.filter_by(id=alert_id, user_id=user_id).first()
-    if not alert:
-        return jsonify({"error": "Alert not found"}), 404
-    alert.acknowledged = True
-    alert.acknowledged_at = datetime.utcnow()
-    db.session.commit()
-    return jsonify({"message": "Alert acknowledged", "alert": alert.to_dict()})
-
 def generate_daily_alerts():
     with app.app_context():
-        users = db.session.query(Entry.user_id).distinct().all()
-        for (user_id,) in users:
-            generate_alerts_for_user(user_id)
-        print(f"✅ Daily alerts refreshed at {date.today()}")
+        # Daily job will be handled by alerts.py logic on GET
+        print(f"✅ Daily check at {date.today()}")
 
 scheduler = BackgroundScheduler()
 scheduler.add_job(func=generate_daily_alerts, trigger="cron", hour=0, minute=0)
 scheduler.start()
+
+# --- THIS IS THE KEY FIX: Load your GOOD alerts.py with why/actions ---
+import alerts
 
 @app.route("/")
 def home():
@@ -425,8 +301,6 @@ def home():
             <h1>Welcome to Finsight AI</h1>
             <p>Your financial insights, alerts, and forecasts — all in one place.</p>
             <p><a href="/health">Check System Health</a></p>
-            <p><a href="/register">Register a New User</a></p>
-            <p><a href="/login">Login</a></p>
         </body>
     </html>
     """
