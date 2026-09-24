@@ -1,8 +1,8 @@
-<<<<<<< HEAD
 # Environment variables
 .env
 .env.local
 .env.*.local
+.env.supabase
 
 # Python
 __pycache__/
@@ -70,12 +70,8 @@ out/
 *.pkl
 *.pickle
 *.joblib
-=======
-.env 
-.env 
-.env 
-.env 
->>>>>>> c609d03 (Add .env to .gitignore)
-finsight-backend.git/ 
-__pycache__/ 
-clean-backend/ 
+
+# Extra - should not be in repo
+finsight-backend.git/
+clean-backend/
+__pycache__/
