@@ -1,0 +1,11 @@
+# Ignore database files
+*.db
+
+# Ignore uploads folder
+/uploads/
+
+# Ignore instance folder
+/instance/
+
+# Ignore VSCode settings
+.vscode/

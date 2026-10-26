@@ -1,18 +1,62 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* ===== CALENDAR FIX - show single native picker ===== */
+input[type="date"] {
+  -webkit-appearance: auto;
+  appearance: auto;
+}
 
+input[type="date"]::-webkit-calendar-picker-indicator {
+  display: inline-block !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  cursor: pointer;
+}
 
+input[type="date"]::-webkit-inner-spin-button,
+input[type="date"]::-webkit-clear-button {
+  display: none;
+}
+
+/* Remove custom wrapper - no longer needed */
+.date-wrapper {
+  display: inline-block;
+  position: static;
+}
+
+.date-wrapper::after {
+  content: none !important;
+}
+
+.date-wrapper input[type="date"] {
+  padding-right: 12px !important;
+}
+
+/* ===== DEFAULT REACT STYLES ===== */
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
+    "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+  font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
     monospace;
+}
+
+/* Tailwind base layer */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom global styles */
+html, body, #root {
+  height: 100%;
+}
+
+.App {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }

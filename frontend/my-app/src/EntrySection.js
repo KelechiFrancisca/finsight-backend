@@ -1,11 +1,43 @@
 import { useEffect, useState } from "react";
 import EntrySection from "./EntrySection";
 
+// ✅ Currency symbols + formatter
+const currencySymbols = {
+  USD: "$",
+  EUR: "€",
+  GBP: "£",
+  CAD: "C$",
+  JPY: "¥",
+  NGN: "₦",
+  ZAR: "R",
+  KES: "KSh",
+  GHS: "₵",
+  EGP: "£E",
+  XOF: "CFA",
+  XAF: "CFA"
+};
+
+function formatAmount(amount, currency) {
+  const symbol = currencySymbols[currency] || "";
+  return `${symbol}${Number(amount).toLocaleString()}`;
+}
+
 function Entries() {
   const [entries, setEntries] = useState([]);
+  const [currency, setCurrency] = useState("USD"); // default until fetched
 
   useEffect(() => {
-    fetch("http://127.0.0.1:5000/entries")
+    const token = localStorage.getItem("token");
+    fetch("http://127.0.0.1:5000/api/settings", {
+      headers: { Authorization: "Bearer " + token }
+    })
+      .then(res => res.json())
+      .then(data => setCurrency(data.currency || "USD"))
+      .catch(err => console.error("Fetch settings error:", err));
+
+    fetch("http://127.0.0.1:5000/api/entries", {
+      headers: { Authorization: "Bearer " + token }
+    })
       .then(res => res.json())
       .then(data => setEntries(data))
       .catch(err => console.error("Fetch entries error:", err));
@@ -30,7 +62,10 @@ function Entries() {
               <td className="px-4 py-2 border">{entry.date}</td>
               <td className="px-4 py-2 border">{entry.category}</td>
               <td className="px-4 py-2 border">{entry.description}</td>
-              <td className="px-4 py-2 border">{entry.amount}</td>
+              {/* ✅ Use formatAmount here */}
+              <td className="px-4 py-2 border">
+                {formatAmount(entry.amount, currency)}
+              </td>
             </tr>
           ))}
         </tbody>

@@ -1,4 +1,25 @@
-function InsightsPanel({ transactions }) {
+import React from "react";
+
+const currencySymbols = {
+  USD: "$",
+  NGN: "₦",
+  EUR: "€",
+  GBP: "£",
+  JPY: "¥",
+  ZAR: "R",
+  KES: "KSh",
+  GHS: "₵",
+  EGP: "£E",
+  XOF: "CFA",
+  XAF: "CFA",
+};
+
+function formatAmount(amount, currency) {
+  const symbol = currencySymbols[currency] || "";
+  return `${symbol}${Number(amount).toLocaleString()}`;
+}
+
+function InsightsPanel({ transactions, currency }) {
   // Totals
   const totalRevenue = transactions
     .filter(t => t.type && t.type.toLowerCase() === "income")
@@ -61,7 +82,9 @@ function InsightsPanel({ transactions }) {
         <li>📊 {trendMessage}</li>
         <li>🔮 Forecast: {forecast}</li>
         <li>💡 Suggested Action: {suggestion}</li>
-        <li>📈 Net Profit: ${netProfit.toFixed(2)} (Margin: {profitMargin.toFixed(2)}%)</li>
+        <li>
+          📈 Net Profit: {formatAmount(netProfit, currency)} (Margin: {profitMargin.toFixed(2)}%)
+        </li>
       </ul>
     </div>
   );

@@ -16,9 +16,10 @@ function Dashboard() {
     }
 
     const baseUrl =
-      window.location.hostname === "localhost"
-        ? "http://localhost:5000"
-        : "https://ai-business-insights-dashboard.onrender.com";
+  window.location.hostname === "localhost"
+    ? "http://127.0.0.1:5000/api"
+    : process.env.REACT_APP_API_URL + "/api";
+
 
     fetch(`${baseUrl}/verify_token`, {
       method: "POST",

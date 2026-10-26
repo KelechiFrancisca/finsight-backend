@@ -1,5 +1,6 @@
 import { Navigate } from "react-router-dom";
 import { useEffect, useState } from "react";
+import API_BASE_URL from "./apiConfig";   // ✅ centralized import
 
 function ProtectedRoute({ children }) {
   const [valid, setValid] = useState(null);
@@ -11,26 +12,23 @@ function ProtectedRoute({ children }) {
       return;
     }
 
-    const baseUrl =
-      window.location.hostname === "localhost"
-        ? "http://127.0.0.1:5000/api"
-        : "https://ai-business-insights-dashboard.onrender.com/api";
-
-    fetch(`${baseUrl}/verify_token`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token }),
+    // ✅ Use /users/me to validate token
+    fetch(`${API_BASE_URL}/users/me`, {
+      headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => res.json())
       .then((data) => {
-        if (data.valid) {
-          setValid(true);
-        } else {
+        if (data.error) {
           setValid(false);
           localStorage.removeItem("token");
+        } else {
+          setValid(true);
         }
       })
-      .catch(() => setValid(false));
+      .catch((err) => {
+        console.error("ProtectedRoute error:", err);
+        setValid(false);
+      });
   }, []);
 
   if (valid === null) {
