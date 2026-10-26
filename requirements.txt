@@ -8,6 +8,7 @@ Flask-Migrate==4.0.5
 
 # Database
 psycopg2-binary==2.9.11
+psycopg[binary]==3.2.6
 
 # Data Science & ML
 numpy==2.3.5
